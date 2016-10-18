@@ -147,6 +147,7 @@ private[chisel3] class DynamicContext() {
   val components = ArrayBuffer[Component]()
   var currentModule: Option[Module] = None
   val errors = new ErrorLog
+  val namingStack = new internal.naming.NamingStack
 }
 
 private[chisel3] object Builder {
@@ -199,4 +200,12 @@ private[chisel3] object Builder {
       Circuit(components.last.name, components)
     }
   }
+}
+
+/** Allows public access to the naming stack in Builder / DynamicContext.
+  * Necessary because naming macros expand in user code and don't have access into private[chisel3]
+  * objects.
+  */
+object DynamicNamingStack {
+  def apply() = Builder.dynamicContext.namingStack
 }
