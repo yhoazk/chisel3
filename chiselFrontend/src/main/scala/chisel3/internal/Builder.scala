@@ -159,6 +159,7 @@ private[chisel3] object Builder {
   def idGen: IdGen = dynamicContext.idGen
   def globalNamespace: Namespace = dynamicContext.globalNamespace
   def components: ArrayBuffer[Component] = dynamicContext.components
+  def namingStack: internal.naming.NamingStack = dynamicContext.namingStack
 
   def currentModule: Option[Module] = dynamicContext.currentModule
   def currentModule_=(target: Option[Module]): Unit = {
@@ -207,5 +208,5 @@ private[chisel3] object Builder {
   * objects.
   */
 object DynamicNamingStack {
-  def apply() = Builder.dynamicContext.namingStack
+  def apply() = Builder.namingStack
 }
