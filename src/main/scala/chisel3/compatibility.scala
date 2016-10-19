@@ -4,6 +4,10 @@
 // moving to the more standard package naming convention chisel3 (lowercase c).
 
 package object Chisel {     // scalastyle:ignore package.object.name
+  import scala.language.experimental.macros
+  import scala.annotation.StaticAnnotation
+  import scala.annotation.compileTimeOnly
+
   implicit val defaultCompileOptions = chisel3.core.ExplicitCompileOptions.NotStrict
   type Direction = chisel3.core.Direction
   val INPUT = chisel3.core.Direction.Input
@@ -108,6 +112,21 @@ package object Chisel {     // scalastyle:ignore package.object.name
     def B: Bool = Bool(x)       // scalastyle:ignore method.name
   }
 
+  /** Better naming by macro transforms, defined here instead of in chisel3.internal.naming because
+    * aliasing StaticAnnotations doesn't seem to work.
+    */
+  @compileTimeOnly("enable macro paradise to expand macro annotations")
+  class dump extends StaticAnnotation {
+    def macroTransform(annottees: Any*): Any = macro chisel3.internal.naming.NamingTransforms.dump
+  }
+  @compileTimeOnly("enable macro paradise to expand macro annotations")
+  class treedump extends StaticAnnotation {
+    def macroTransform(annottees: Any*): Any = macro chisel3.internal.naming.NamingTransforms.treedump
+  }
+  @compileTimeOnly("enable macro paradise to expand macro annotations")
+  class chiselName extends StaticAnnotation {
+    def macroTransform(annottees: Any*): Any = macro chisel3.internal.naming.NamingTransforms.chiselName
+  }
 
   type BackendCompilationUtilities = chisel3.BackendCompilationUtilities
   val Driver = chisel3.Driver
