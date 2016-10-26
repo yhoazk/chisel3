@@ -4,16 +4,20 @@ package chiselTests
 
 import chisel3._
 import chisel3.util._
+import chisel3.testers.BasicTester
 
-class VendingMachine extends Module {
+abstract class VendingMachine extends Module {
   val io = IO(new Bundle {
     val nickel = Input(Bool())
     val dime   = Input(Bool())
     val valid  = Output(Bool())
   })
-  val c = UInt(5, width = 3)
+}
+
+class VendingMachineFSM extends VendingMachine {
   val sIdle :: s5 :: s10 :: s15 :: sOk :: Nil = Enum(UInt(), 5)
   val state = Reg(init = sIdle)
+
   when (state === sIdle) {
     when (io.nickel) { state := s5 }
     when (io.dime)   { state := s10 }
@@ -36,34 +40,80 @@ class VendingMachine extends Module {
   io.valid := (state === sOk)
 }
 
-/*
-class VendingMachineTester(c: VendingMachine) extends Tester(c) {
-  var money = 0
-  var isValid = false
-  for (t <- 0 until 20) {
-    val coin     = rnd.nextInt(3)*5
-    val isNickel = coin == 5
-    val isDime   = coin == 10
+class VendingMachineNoFSM extends VendingMachine {
+  val MaxValue = 25 // Nickel + Dime + Dime
+  val SodaCost = 20
 
-    // Advance circuit
-    poke(c.io.nickel, int(isNickel))
-    poke(c.io.dime,   int(isDime))
-    step(1)
+  val value = Reg(init = UInt(0, log2Up(MaxValue)))
+  val incValue = Wire(init = UInt(0, log2Up(MaxValue)))
+  val dispense = value >= SodaCost.U
 
-    // Advance model
-    money = if (isValid) 0 else (money + coin)
-    isValid = money >= 20
+  when (dispense) {
+    value := 0.U // No change
+  } .otherwise {
+    value := value + incValue
+  }
 
-    // Compare
-    expect(c.io.valid, int(isValid))
+  when (io.nickel) { incValue := 5.U }
+  when (io.dime) { incValue := 10.U }
+  io.valid := dispense
+}
+
+object VendingMachineUtils {
+  abstract class Coin(val value: Int)
+  case object NoCoin extends Coin(0)
+  case object Nickel extends Coin(5)
+  case object Dime extends Coin(10)
+
+  // Calculate expected outputs by accumulating inputs, reseting to 0 when $.20 is reached
+  def getExpectedResults(inputs: Seq[Coin]): Seq[Boolean] = {
+    inputs.scanLeft((0, false)) { // (coin sum, soda dispensed)
+      case ((in, _), x) => if (in + x.value >= 20) (0, true) else (in + x.value, false)
+    } map (_._2) // drop the current value, just get expected output
+  }
+
+}
+
+/** This tester is parameterized with a given implementation of [[VendingMachine]]
+  * We pass mod by reference so that we only invoke the Chisel construction of the Module once
+  */
+class VendingMachineTester(mod: => VendingMachine) extends BasicTester {
+  import VendingMachineUtils._
+
+  val (cycle, done) = Counter(true.B, 11)
+  when (done) { stop() ; stop() } // Double stop because Verilator requires 2
+
+  // Construct mod
+  val dut = mod
+
+  // Inputs and expected results
+  val inputs: Seq[Coin] = Seq(Nickel, Dime, Dime, NoCoin, Nickel, Nickel, Nickel, Nickel, Dime, Dime)
+  val expected: Seq[Boolean] = getExpectedResults(inputs)
+
+  // Create the actual hardware test
+  dut.io.nickel := false.B
+  dut.io.dime := false.B
+
+  for (i <- 0 until 10) {
+    when (cycle === i.U) {
+      inputs(i) match {
+        case NoCoin => // do nothing
+        case Nickel => dut.io.nickel := true.B
+        case Dime => dut.io.dime := true.B
+      }
+      assert(dut.io.valid === expected(i).B)
+    }
   }
 }
-*/
 
-class VendingMachineSpec extends ChiselPropSpec {
-  property("VendingMachine should elaborate") {
-    elaborate { new VendingMachine }
+class VendingMachineSpec extends ChiselFlatSpec {
+  behavior of "VendingMachine"
+
+  it should "work with an explicit FSM" in {
+    assertTesterPasses { new VendingMachineTester(Module(new VendingMachineFSM)) }
   }
 
-  ignore("VendingMachineTester should return the correct result") { }
+  it should "work without an explicit FSM" in {
+    assertTesterPasses { new VendingMachineTester(Module(new VendingMachineNoFSM)) }
+  }
 }
