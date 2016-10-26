@@ -18,7 +18,9 @@ lazy val commonSettings = Seq (
   version := "3.1-SNAPSHOT",
   git.remoteRepo := "git@github.com:ucb-bar/chisel3.git",
   autoAPIMappings := true,
-  scalaVersion := "2.11.7"
+  scalaVersion := "2.11.7",
+  libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 )
 
 val defaultVersions = Map("firrtl" -> "1.1-SNAPSHOT")
@@ -66,7 +68,6 @@ lazy val chiselSettings = Seq (
 
   libraryDependencies ++= Seq(
     "org.scalatest" %% "scalatest" % "2.2.5" % "test",
-    "org.scala-lang" % "scala-reflect" % scalaVersion.value,
     "org.scalacheck" %% "scalacheck" % "1.12.4" % "test",
     "com.github.scopt" %% "scopt" % "3.4.0"
   ),
@@ -82,33 +83,23 @@ lazy val chiselSettings = Seq (
         "edu.berkeley.cs" %% dep % sys.props.getOrElse(dep + "Version", defaultVersions(dep))
     }
   },
-  
+
   // Tests from other projects may still run concurrently.
   parallelExecution in Test := true,
 
-  javacOptions ++= Seq("-target", "1.7"),
+  javacOptions ++= Seq("-target", "1.7")
   //  Hopefully we get these options back in Chisel3
   //  scalacOptions in (Compile, doc) <++= (baseDirectory in LocalProject("chisel"), version) map { (bd, v) =>
   //    Seq("-diagrams", "-diagrams-max-classes", "25", "-sourcepath", bd.getAbsolutePath, "-doc-source-url",
   //        "https://github.com/ucb-bar/chisel/tree/master/€{FILE_PATH}.scala")
   //  }
-
-  addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
 )
 
 lazy val coreMacros = (project in file("coreMacros")).
-  settings(commonSettings: _*).
-  settings(
-    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value,
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
-  )
+  settings(commonSettings: _*)
 
 lazy val chiselFrontend = (project in file("chiselFrontend")).
   settings(commonSettings: _*).
-  settings(
-    libraryDependencies += "org.scala-lang" % "scala-reflect" % scalaVersion.value,
-    addCompilerPlugin("org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full)
-  ).
   dependsOn(coreMacros)
 
 lazy val chisel = (project in file(".")).
