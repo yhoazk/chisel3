@@ -100,9 +100,6 @@ extends HasId {
   /** Legalized name of this module. */
   final val name = Builder.globalNamespace.name(desiredName)
 
-  /** FIRRTL Module name */
-  def modName = name
-
   /** Keep component for signal names */
   private[chisel3] var _component: Option[Component] = None
 

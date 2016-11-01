@@ -31,7 +31,7 @@ private class Emitter(circuit: Circuit) {
           "\"" + printf.format(fmt) + "\"") ++ args
         printfArgs mkString ("printf(", ", ", ")")
       case e: DefInvalid => s"${e.arg.fullName(ctx)} is invalid"
-      case e: DefInstance => s"inst ${e.name} of ${e.id.modName}"
+      case e: DefInstance => s"inst ${e.name} of ${e.id.name}"
       case w: WhenBegin =>
         indent()
         s"when ${w.pred.fullName(ctx)} :"
