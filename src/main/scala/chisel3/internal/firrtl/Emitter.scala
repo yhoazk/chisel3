@@ -81,8 +81,8 @@ private class Emitter(circuit: Circuit) {
   private def emit(m: Component): String = {
     // Generate the body.
     val sb = new StringBuilder
-    sb append moduleDecl(m)
-    sb append moduleDefn(m)
+    sb.append(moduleDecl(m))
+    sb.append(moduleDefn(m))
     sb.result
   }
 
