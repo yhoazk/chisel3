@@ -26,6 +26,7 @@ package object chisel3 {    // scalastyle:ignore package.object.name
   type Vec[T <: Data] = chisel3.core.Vec[T]
   type VecLike[T <: Data] = chisel3.core.VecLike[T]
   type Bundle = chisel3.core.Bundle
+  val Bundle = chisel3.core.Bundle
 
   val assert = chisel3.core.assert
 

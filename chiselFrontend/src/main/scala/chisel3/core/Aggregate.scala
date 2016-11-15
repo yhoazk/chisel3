@@ -434,7 +434,11 @@ class Bundle extends Aggregate {
   }
 }
 
-private[core] object Bundle {
-  val keywords = List("flip", "asInput", "asOutput", "cloneType", "chiselCloneType", "toBits",
+object Bundle {
+  def apply(elts: (String, Data)*): Bundle = new Bundle {
+    override lazy val namedElts: ArrayBuffer[(String, Data)] = ArrayBuffer(elts: _*)
+    override def cloneType = Bundle(elts: _*).asInstanceOf[this.type]
+  }
+  private[core] val keywords = List("flip", "asInput", "asOutput", "cloneType", "chiselCloneType", "toBits",
     "widthOption", "signalName", "signalPathName", "signalParent", "signalComponent")
 }
