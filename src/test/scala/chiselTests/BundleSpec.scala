@@ -24,8 +24,6 @@ class BundleSpec extends ChiselFlatSpec {
     override def cloneType = (new BundleBar).asInstanceOf[this.type]
   }
 
-  def progBundleFooBar = Bundle("foo" -> UInt.width(32), "bar" -> UInt.width(32))
-
   class MyModule(output: Bundle, input: Bundle) extends Module {
     val io = IO(new Bundle {
       val in = Input(input.cloneType)
@@ -38,17 +36,13 @@ class BundleSpec extends ChiselFlatSpec {
     elaborate { new MyModule(new BundleFooBar, new BundleBarFoo) }
   }
 
-  "Bundles with the same fields as programmatic Bundle" should "work" in {
-    elaborate { new MyModule(new BundleFooBar, progBundleFooBar) }
-  }
-
   "Bulk connect on Bundles" should "check that the fields match" in {
     (the [ChiselException] thrownBy {
       elaborate { new MyModule(new BundleFooBar, new BundleFoo) }
-    }).getMessage should include ("Right Bundle missing field")
+    }).getMessage should include ("Right Record missing field")
 
     (the [ChiselException] thrownBy {
       elaborate { new MyModule(new BundleFoo, new BundleFooBar) }
-    }).getMessage should include ("Left Bundle missing field")
+    }).getMessage should include ("Left Record missing field")
   }
 }

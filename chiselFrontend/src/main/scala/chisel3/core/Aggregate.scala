@@ -249,7 +249,7 @@ trait VecLike[T <: Data] extends collection.IndexedSeq[T] with HasId {
   // IndexedSeq has its own hashCode/equals that we must not use
   override def hashCode: Int = super[HasId].hashCode
   override def equals(that: Any): Boolean = super[HasId].equals(that)
-  
+
   @deprecated("Use Vec.apply instead", "chisel3")
   def read(idx: UInt): T
 
@@ -320,50 +320,59 @@ trait VecLike[T <: Data] extends collection.IndexedSeq[T] with HasId {
     SeqUtils.oneHotMux(indexWhereHelper(p))
 }
 
+/** Base class for Aggregates based on pairs of (String, Data)
+  *
+  * Only used to share implementation code, not exposed as part of API
+  */
+abstract class Record extends Aggregate {
+
+  def elements: ListMap[String, Data]
+
+  /** Name for Pretty Printing */
+  def className: String = this.getClass.getSimpleName
+
+  private val _namespace = Builder.globalNamespace.child
+
+  private[chisel3] def toType = {
+    def eltPort(elt: Data): String = {
+      val flipStr: String = if(Data.isFirrtlFlipped(elt)) "flip " else ""
+      s"${flipStr}${elt.getRef.name} : ${elt.toType}"
+    }
+    s"{${elements.toIndexedSeq.reverse.map(e => eltPort(e._2)).mkString(", ")}}"
+  }
+
+  private[chisel3] lazy val flatten = elements.toIndexedSeq.flatMap(_._2.flatten)
+
+  private[chisel3] override def _onModuleClose: Unit = // scalastyle:ignore method.name
+    for ((name, elt) <- elements) { elt.setRef(this, _namespace.name(name)) }
+
+  private[chisel3] final def allElements: Seq[Element] = elements.toIndexedSeq.flatMap(_._2.allElements)
+
+  /** Default "pretty-print" implementation
+    * Analogous to printing a Map
+    * Results in "$className(elt0.name -> elt0.value, ...)"
+    */
+  def toPrintable: Printable = {
+    val elts =
+      if (elements.isEmpty) List.empty[Printable]
+      else {
+        elements.toList.reverse flatMap { case (name, data) =>
+          List(PString(s"$name -> "), data.toPrintable, PString(", "))
+        } dropRight 1 // Remove trailing ", "
+      }
+    PString(s"$className(") + Printables(elts) + PString(")")
+  }
+}
+
 /** Base class for data types defined as a bundle of other data types.
   *
   * Usage: extend this class (either as an anonymous or named class) and define
   * members variables of [[Data]] subtypes to be elements in the Bundle.
   */
-class Bundle extends Aggregate {
-  private val _namespace = Builder.globalNamespace.child
+class Bundle extends Record {
+  final override def className = "Bundle"
 
-  // TODO: replace with better defined FIRRTL weak-connect operator
-  /** Connect elements in this Bundle to elements in `that` on a best-effort
-    * (weak) basis, matching by type, orientation, and name.
-    *
-    * @note unconnected elements will NOT generate errors or warnings
-    *
-    * @example
-    * {{{
-    * // Pass through wires in this module's io to those mySubModule's io,
-    * // matching by type, orientation, and name, and ignoring extra wires.
-    * mySubModule.io <> io
-    * }}}
-    */
-
-  lazy val elements: ListMap[String, Data] = ListMap(namedElts:_*)
-
-  /** Returns a best guess at whether a field in this Bundle is a user-defined
-    * Bundle element without looking at type signatures.
-    */
-  private def isBundleField(m: java.lang.reflect.Method) =
-    m.getParameterTypes.isEmpty &&
-    !java.lang.reflect.Modifier.isStatic(m.getModifiers) &&
-    !(Bundle.keywords contains m.getName) && !(m.getName contains '$')
-
-  /** Returns a field's contained user-defined Bundle element if it appears to
-    * be one, otherwise returns None.
-    */
-  private def getBundleField(m: java.lang.reflect.Method): Option[Data] = m.invoke(this) match {
-    case d: Data => Some(d)
-    case Some(d: Data) => Some(d)
-    case _ => None
-  }
-
-  /** Returns a list of elements in this Bundle.
-    */
-  private[core] lazy val namedElts = {
+  final lazy val elements: ListMap[String, Data] = {
     val nameMap = LinkedHashMap[String, Data]()
     val seen = HashSet[Data]()
     for (m <- getPublicFields(classOf[Bundle])) {
@@ -376,27 +385,24 @@ class Bundle extends Aggregate {
         }
       }
     }
-    ArrayBuffer(nameMap.toSeq:_*) sortWith {case ((an, a), (bn, b)) => (a._id > b._id) || ((a eq b) && (an > bn))}
+    ListMap(nameMap.toSeq sortWith { case ((an, a), (bn, b)) => (a._id > b._id) || ((a eq b) && (an > bn)) }: _*)
   }
-  private[chisel3] def toType = {
-    def eltPort(elt: Data): String = {
-      val flipStr: String = if(Data.isFirrtlFlipped(elt)) "flip " else ""
-      s"${flipStr}${elt.getRef.name} : ${elt.toType}"
-    }
-    s"{${namedElts.reverse.map(e => eltPort(e._2)).mkString(", ")}}"
+
+  /** Returns a field's contained user-defined Bundle element if it appears to
+    * be one, otherwise returns None.
+    */
+  private def getBundleField(m: java.lang.reflect.Method): Option[Data] = m.invoke(this) match {
+    case d: Data => Some(d)
+    case Some(d: Data) => Some(d)
+    case _ => None
   }
-  private[chisel3] lazy val flatten = namedElts.flatMap(_._2.flatten)
-  private[chisel3] override def _onModuleClose: Unit = // scalastyle:ignore method.name
-    for ((name, elt) <- namedElts) { elt.setRef(this, _namespace.name(name)) }
-    
-  private[chisel3] final def allElements: Seq[Element] = namedElts.flatMap(_._2.allElements)
 
   override def cloneType : this.type = {
     // If the user did not provide a cloneType method, try invoking one of
     // the following constructors, not all of which necessarily exist:
     // - A zero-parameter constructor
     // - A one-paramater constructor, with null as the argument
-    // - A one-parameter constructor for a nested Bundle, with the enclosing
+    // - A one-parameter constructor for a nested Record, with the enclosing
     //   parent Module as the argument
     val constructor = this.getClass.getConstructors.head
     try {
@@ -408,37 +414,19 @@ class Bundle extends Aggregate {
           constructor.newInstance(_parent.get).asInstanceOf[this.type]
         } catch {
           case _: java.lang.reflect.InvocationTargetException | _: java.lang.IllegalArgumentException =>
-            Builder.error(s"Parameterized Bundle ${this.getClass} needs cloneType method. You are probably using " +
-              "an anonymous Bundle object that captures external state and hence is un-cloneTypeable")
+            Builder.error(s"Parameterized Record ${this.getClass} needs cloneType method. You are probably using " +
+              "an anonymous Record object that captures external state and hence is un-cloneTypeable")
             this
         }
       case _: java.lang.reflect.InvocationTargetException | _: java.lang.IllegalArgumentException =>
-        Builder.error(s"Parameterized Bundle ${this.getClass} needs cloneType method")
+        Builder.error(s"Parameterized Record ${this.getClass} needs cloneType method")
         this
     }
   }
-
-  /** Default "pretty-print" implementation
-    * Analogous to printing a Map
-    * Results in "Bundle(elt0.name -> elt0.value, ...)"
-    */
-  def toPrintable: Printable = {
-    val elts =
-      if (elements.isEmpty) List.empty[Printable]
-      else {
-        elements.toList.reverse flatMap { case (name, data) =>
-          List(PString(s"$name -> "), data.toPrintable, PString(", "))
-        } dropRight 1 // Remove trailing ", "
-      }
-    PString("Bundle(") + Printables(elts) + PString(")")
-  }
 }
 
-object Bundle {
-  def apply(elts: (String, Data)*): Bundle = new Bundle {
-    override lazy val namedElts: ArrayBuffer[(String, Data)] = ArrayBuffer(elts: _*)
-    override def cloneType = Bundle(elts: _*).asInstanceOf[this.type]
-  }
-  private[core] val keywords = List("flip", "asInput", "asOutput", "cloneType", "chiselCloneType", "toBits",
+private[core] object Bundle {
+  val keywords = List("flip", "asInput", "asOutput", "cloneType", "chiselCloneType", "toBits",
     "widthOption", "signalName", "signalPathName", "signalParent", "signalComponent")
 }
+
